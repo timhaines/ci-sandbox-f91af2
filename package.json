@@ -1,6 +1,6 @@
 {
   "name": "@timhaines/preview-e2e-fixture",
-  "version": "0.0.0",
+  "version": "0.0.1791411912",
   "description": "Build-integrity fixture. Not a real library.",
   "main": "index.js",
   "license": "MIT",
