@@ -1,0 +1,41 @@
+name: CI (protbr test)
+
+# Identical publish gating to main.yml, plus `environment: release` on the publishing
+# job. The environment carries a deployment branch policy, which is settings-side and
+# cannot be edited from a branch. This is the arm that shows the fix binding the ref.
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - master
+    tags:
+      - v[0-9]+.[0-9]+.[0-9]+*
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish
+    if: >-
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'push') &&
+      startsWith(github.ref, 'refs/tags/v')
+    runs-on: 'ubuntu-24.04'
+    environment: protbr
+    permissions:
+      contents: read
+      id-token: write # Required for OIDC
+    steps:
+      - name: Report what this run is
+        run: |
+          echo "FIXTURE_MARKER_GATED event_name=${{ github.event_name }} ref=${{ github.ref }}"
+
+      - name: Report the OIDC claims npm would receive
+        run: |
+          set -euo pipefail
+          jwt=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" | jq -r '.value')
+          payload=$(printf '%s' "$jwt" | cut -d. -f2 | tr '_-' '/+')
+          while [ $(( ${#payload} % 4 )) -ne 0 ]; do payload="$payload="; done
+          printf '%s' "$payload" | base64 --decode \
+            | jq '{repository, workflow_ref, job_workflow_ref, ref, event_name, environment}'
