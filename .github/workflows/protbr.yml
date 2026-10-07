@@ -1,0 +1,14 @@
+name: protbr test
+on:
+  workflow_dispatch: {}
+permissions: {}
+jobs:
+  publish:
+    name: Publish
+    runs-on: 'ubuntu-24.04'
+    environment: protbr
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - run: echo "DEPLOYED ref=${{ github.ref }}"
