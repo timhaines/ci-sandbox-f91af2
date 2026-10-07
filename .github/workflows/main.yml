@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - master
+    tags:
+      - v[0-9]+.[0-9]+.[0-9]+*
+  pull_request:
+    branches:
+      - master
+
+permissions: {}
+
+jobs:
+  build:
+    name: 'Static Checks'
+    runs-on: 'ubuntu-24.04'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Verify Linting
+        run: node -e "require('./package.json')"
+
+  publish:
+    name: Publish
+    if: >-
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'push') &&
+      startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: 'ubuntu-24.04'
+    permissions:
+      contents: read
+      id-token: write # Required for OIDC
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Report what this run is
+        run: |
+          echo "FIXTURE_MARKER event_name=${{ github.event_name }} ref=${{ github.ref }}"
+
+      - name: Report the OIDC claims npm would receive
+        run: |
+          set -euo pipefail
+          jwt=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org" | jq -r '.value')
+          payload=$(printf '%s' "$jwt" | cut -d. -f2 | tr '_-' '/+')
+          while [ $(( ${#payload} % 4 )) -ne 0 ]; do payload="$payload="; done
+          printf '%s' "$payload" | base64 --decode \
+            | jq '{repository, workflow_ref, job_workflow_ref, ref, event_name, environment}'
+
+      - name: Publish to NPM
+        env:
+          NODE_AUTH_TOKEN: XXXXX-XXXXX-XXXXX-XXXXX
+          NPM_CONFIG_LOGLEVEL: notice
+        run: |
+          set -euxo pipefail
+          VERSION=$(cat package.json | jq -r '.version')
+          echo "Publishing $VERSION with latest tag."
+          npm publish --tag latest
